@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Warehouse Robot — Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;600;800&display=swap" rel="stylesheet" />
+  <style>
+    /* ── CSS Variables ─────────────────────────────────────────── */
+    :root {
+      --bg:          #0a0c0f;
+      --bg2:         #10141a;
+      --bg3:         #161c26;
+      --border:      #1e2a38;
+      --accent:      #00e5ff;
+      --accent2:     #ff6b35;
+      --pass:        #00ff88;
+      --fail:        #ff3b5c;
+      --warn:        #ffcc00;
+      --text:        #c8d8e8;
+      --text-dim:    #4a6070;
+      --mono:        'Share Tech Mono', monospace;
+      --sans:        'Barlow Condensed', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Scanline overlay ───────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,229,255,0.018) 2px,
+        rgba(0,229,255,0.018) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 32px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg2);
+      position: sticky; top: 0; z-index: 100;
+    }
+
+    .logo {
+      display: flex; align-items: center; gap: 14px;
+    }
+    .logo-icon {
+      width: 38px; height: 38px;
+      background: var(--accent);
+      clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+      animation: pulse-hex 2s ease-in-out infinite;
+    }
+    @keyframes pulse-hex {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.6; }
+    }
+    .logo-text {
+      font-size: 22px; font-weight: 800; letter-spacing: 3px;
+      text-transform: uppercase; color: var(--accent);
+    }
+    .logo-sub {
+      font-family: var(--mono); font-size: 10px;
+      color: var(--text-dim); letter-spacing: 2px;
+    }
+
+    .header-right {
+      display: flex; align-items: center; gap: 24px;
+    }
+    .server-status {
+      display: flex; align-items: center; gap: 8px;
+      font-family: var(--mono); font-size: 12px; color: var(--text-dim);
+    }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--text-dim);
+      transition: background 0.3s;
+    }
+    .dot.online  { background: var(--pass); box-shadow: 0 0 8px var(--pass); }
+    .dot.offline { background: var(--fail); box-shadow: 0 0 8px var(--fail); }
+
+    .clock {
+      font-family: var(--mono); font-size: 14px; color: var(--accent);
+      letter-spacing: 2px;
+    }
+
+    /* ── Main Grid ──────────────────────────────────────────────── */
+    main {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      grid-template-rows: auto 1fr;
+      gap: 20px;
+      padding: 24px 32px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* ── Card base ──────────────────────────────────────────────── */
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+    .card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent), transparent);
+    }
+    .card-header {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 3px; text-transform: uppercase;
+      color: var(--text-dim);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .card-body { padding: 20px; }
+
+    /* ── Zone Track (top, spans full width) ────────────────────── */
+    .zone-track {
+      grid-column: 1 / -1;
+    }
+    .track-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      padding: 28px 40px;
+      position: relative;
+    }
+
+    /* Connecting line */
+    .track-container::before {
+      content: '';
+      position: absolute;
+      top: 50%; left: 80px; right: 80px;
+      height: 2px;
+      background: linear-gradient(90deg,
+        var(--border) 0%,
+        var(--accent) 33%,
+        var(--border) 33%,
+        var(--border) 66%,
+        var(--accent) 66%,
+        var(--border) 100%
+      );
+      transform: translateY(-50%);
+      transition: background 0.5s;
+      z-index: 0;
+    }
+
+    .zone-node {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 12px; z-index: 1;
+      flex: 1;
+    }
+
+    .zone-circle {
+      width: 88px; height: 88px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      background: var(--bg3);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 2px;
+      transition: all 0.4s;
+      position: relative;
+      cursor: default;
+    }
+    .zone-circle .zone-num {
+      font-size: 28px; font-weight: 800;
+      color: var(--text-dim);
+      line-height: 1;
+      transition: color 0.3s;
+    }
+    .zone-circle .zone-label {
+      font-family: var(--mono);
+      font-size: 9px; letter-spacing: 1px;
+      color: var(--text-dim);
+      transition: color 0.3s;
+    }
+
+    /* Active zone */
+    .zone-node.active .zone-circle {
+      border-color: var(--accent);
+      background: rgba(0,229,255,0.08);
+      box-shadow: 0 0 30px rgba(0,229,255,0.3);
+    }
+    .zone-node.active .zone-num   { color: var(--accent); }
+    .zone-node.active .zone-label { color: var(--accent); }
+
+    /* Pass zone */
+    .zone-node.pass .zone-circle {
+      border-color: var(--pass);
+      background: rgba(0,255,136,0.07);
+      box-shadow: 0 0 20px rgba(0,255,136,0.2);
+    }
+    .zone-node.pass .zone-num   { color: var(--pass); }
+    .zone-node.pass .zone-label { color: var(--pass); }
+
+    /* Fail zone */
+    .zone-node.fail .zone-circle {
+      border-color: var(--fail);
+      background: rgba(255,59,92,0.07);
+      box-shadow: 0 0 20px rgba(255,59,92,0.2);
+    }
+    .zone-node.fail .zone-num   { color: var(--fail); }
+    .zone-node.fail .zone-label { color: var(--fail); }
+
+    .zone-badge {
+      font-family: var(--mono);
+      font-size: 12px; letter-spacing: 2px;
+      padding: 4px 12px;
+      border-radius: 2px;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      background: var(--bg3);
+      transition: all 0.3s;
+      min-width: 72px; text-align: center;
+    }
+    .zone-node.pass .zone-badge {
+      background: rgba(0,255,136,0.1);
+      border-color: var(--pass);
+      color: var(--pass);
+    }
+    .zone-node.fail .zone-badge {
+      background: rgba(255,59,92,0.1);
+      border-color: var(--fail);
+      color: var(--fail);
+    }
+    .zone-node.active .zone-badge {
+      background: rgba(0,229,255,0.1);
+      border-color: var(--accent);
+      color: var(--accent);
+      animation: blink-badge 1s ease-in-out infinite;
+    }
+    @keyframes blink-badge {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    .zone-desc {
+      font-size: 12px; color: var(--text-dim);
+      letter-spacing: 1px; text-transform: uppercase;
+    }
+
+    /* Robot indicator */
+    .robot-indicator {
+      position: absolute;
+      top: 50%; transform: translateY(-50%);
+      font-size: 22px;
+      transition: left 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+      z-index: 2;
+      filter: drop-shadow(0 0 10px var(--accent));
+    }
+
+    /* ── Current Detection Panel ────────────────────────────────── */
+    .detection-panel { grid-row: 2; }
+
+    .result-display {
+      text-align: center;
+      padding: 32px 20px;
+    }
+    .result-zone-label {
+      font-family: var(--mono); font-size: 13px;
+      letter-spacing: 3px; color: var(--text-dim);
+      margin-bottom: 16px;
+    }
+    .result-zone-num {
+      font-size: 96px; font-weight: 800; line-height: 1;
+      color: var(--accent);
+      text-shadow: 0 0 40px rgba(0,229,255,0.4);
+      transition: all 0.4s;
+    }
+    .result-divider {
+      width: 60px; height: 2px;
+      background: var(--border);
+      margin: 20px auto;
+      transition: background 0.3s;
+    }
+    .result-status {
+      font-size: 56px; font-weight: 800; letter-spacing: 4px;
+      color: var(--text-dim);
+      transition: all 0.4s;
+    }
+    .result-status.PASS {
+      color: var(--pass);
+      text-shadow: 0 0 30px rgba(0,255,136,0.5);
+      animation: flare 0.6s ease-out;
+    }
+    .result-status.FAIL {
+      color: var(--fail);
+      text-shadow: 0 0 30px rgba(255,59,92,0.5);
+    }
+    @keyframes flare {
+      0%   { transform: scale(1.2); opacity: 0; }
+      100% { transform: scale(1);   opacity: 1; }
+    }
+    .result-confidence {
+      margin-top: 16px;
+      font-family: var(--mono); font-size: 12px;
+      color: var(--text-dim); letter-spacing: 2px;
+    }
+    .conf-bar-wrap {
+      width: 200px; height: 4px;
+      background: var(--border);
+      margin: 8px auto 0;
+      border-radius: 2px; overflow: hidden;
+    }
+    .conf-bar {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      border-radius: 2px;
+      transition: width 0.6s ease-out;
+    }
+
+    /* Detection type indicator */
+    .detection-type {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px; margin-top: 24px;
+    }
+    .det-icon {
+      width: 48px; height: 48px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      background: var(--bg3);
+    }
+    .det-info { text-align: left; }
+    .det-name {
+      font-size: 14px; font-weight: 600;
+      letter-spacing: 2px; text-transform: uppercase;
+      color: var(--text);
+    }
+    .det-desc {
+      font-family: var(--mono); font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    /* ── History Panel ──────────────────────────────────────────── */
+    .history-panel { grid-row: 2; }
+
+    .history-list {
+      display: flex; flex-direction: column; gap: 10px;
+      max-height: 420px; overflow-y: auto;
+      padding-right: 4px;
+    }
+    .history-list::-webkit-scrollbar { width: 4px; }
+    .history-list::-webkit-scrollbar-track { background: var(--bg3); }
+    .history-list::-webkit-scrollbar-thumb { background: var(--border); }
+
+    .history-entry {
+      display: flex; align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      border-left: 3px solid var(--border);
+      animation: slide-in 0.3s ease-out;
+      transition: border-color 0.3s;
+    }
+    .history-entry.PASS { border-left-color: var(--pass); }
+    .history-entry.FAIL { border-left-color: var(--fail); }
+
+    @keyframes slide-in {
+      from { transform: translateX(-10px); opacity: 0; }
+      to   { transform: translateX(0);     opacity: 1; }
+    }
+
+    .he-zone {
+      font-size: 22px; font-weight: 800;
+      color: var(--text-dim); min-width: 24px;
+    }
+    .he-info { flex: 1; }
+    .he-status {
+      font-size: 13px; font-weight: 600;
+      letter-spacing: 2px;
+    }
+    .he-status.PASS { color: var(--pass); }
+    .he-status.FAIL { color: var(--fail); }
+    .he-time {
+      font-family: var(--mono); font-size: 10px;
+      color: var(--text-dim);
+    }
+    .he-conf {
+      font-family: var(--mono); font-size: 10px;
+      color: var(--text-dim); text-align: right;
+    }
+
+    .history-empty {
+      text-align: center; padding: 40px 20px;
+      font-family: var(--mono); font-size: 12px;
+      color: var(--text-dim); letter-spacing: 2px;
+    }
+
+    /* ── Stats Row ──────────────────────────────────────────────── */
+    .stats-row {
+      display: flex; gap: 12px; margin-top: 16px;
+    }
+    .stat-box {
+      flex: 1;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 12px;
+      text-align: center;
+    }
+    .stat-val {
+      font-size: 28px; font-weight: 800;
+      color: var(--accent); line-height: 1;
+    }
+    .stat-label {
+      font-family: var(--mono); font-size: 10px;
+      color: var(--text-dim); letter-spacing: 2px;
+      margin-top: 4px;
+    }
+
+    /* ── Bottom bar ─────────────────────────────────────────────── */
+    .bottom-bar {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 20px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: var(--mono); font-size: 11px;
+      color: var(--text-dim);
+    }
+    .poll-indicator {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .poll-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent);
+      animation: poll-blink 2s ease-in-out infinite;
+    }
+    @keyframes poll-blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.2; }
+    }
+
+    .btn-reset {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 11px; letter-spacing: 2px;
+      padding: 6px 16px;
+      border-radius: 2px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-reset:hover {
+      border-color: var(--accent2);
+      color: var(--accent2);
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon"></div>
+    <div>
+      <div class="logo-text">WarehouseBot</div>
+      <div class="logo-sub">AUTONOMOUS INSPECTION SYSTEM v1.0</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="server-status">
+      <div class="dot" id="serverDot"></div>
+      <span id="serverLabel">CONNECTING...</span>
+    </div>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+</header>
+
+<!-- ── Main ───────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- Zone Track -->
+  <div class="card zone-track">
+    <div class="card-header">
+      <span>◈ Zone Navigation Track</span>
+      <span id="missionLabel" style="color:var(--accent);font-family:var(--mono)">STANDBY</span>
+    </div>
+    <div class="track-container" id="trackContainer">
+      <!-- Robot emoji moves along -->
+      <span class="robot-indicator" id="robotIndicator" style="left:40px">🤖</span>
+
+      <div class="zone-node" id="zoneNode1">
+        <div class="zone-circle">
+          <span class="zone-num">1</span>
+          <span class="zone-label">ZONE</span>
+        </div>
+        <div class="zone-badge" id="zoneBadge1">PENDING</div>
+        <div class="zone-desc">🟢 Green Color</div>
+      </div>
+
+      <div class="zone-node" id="zoneNode2">
+        <div class="zone-circle">
+          <span class="zone-num">2</span>
+          <span class="zone-label">ZONE</span>
+        </div>
+        <div class="zone-badge" id="zoneBadge2">PENDING</div>
+        <div class="zone-desc">⭕ Circle Shape</div>
+      </div>
+
+      <div class="zone-node" id="zoneNode3">
+        <div class="zone-circle">
+          <span class="zone-num">3</span>
+          <span class="zone-label">ZONE</span>
+        </div>
+        <div class="zone-badge" id="zoneBadge3">PENDING</div>
+        <div class="zone-desc">🔵 Blue Square</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detection Result Panel -->
+  <div class="card detection-panel">
+    <div class="card-header">
+      <span>◈ Live Detection</span>
+      <span id="lastUpdated" style="font-family:var(--mono);font-size:10px">--</span>
+    </div>
+    <div class="card-body">
+      <div class="result-display">
+        <div class="result-zone-label">CURRENT ZONE</div>
+        <div class="result-zone-num" id="curZone">—</div>
+        <div class="result-divider" id="resultDivider"></div>
+        <div class="result-status" id="curStatus">WAITING</div>
+        <div class="result-confidence">
+          CONFIDENCE: <span id="confVal">—</span>
+        </div>
+        <div class="conf-bar-wrap">
+          <div class="conf-bar" id="confBar"></div>
+        </div>
+        <div class="detection-type" id="detectionType">
+          <div class="det-icon" id="detIcon">🔍</div>
+          <div class="det-info">
+            <div class="det-name" id="detName">Awaiting Signal</div>
+            <div class="det-desc" id="detDesc">ESP32 not connected yet</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mini stats -->
+      <div class="stats-row">
+        <div class="stat-box">
+          <div class="stat-val" id="statTotal">0</div>
+          <div class="stat-label">TOTAL</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="statPass" style="color:var(--pass)">0</div>
+          <div class="stat-label">PASS</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="statFail" style="color:var(--fail)">0</div>
+          <div class="stat-label">FAIL</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- History Panel -->
+  <div class="card history-panel">
+    <div class="card-header">
+      <span>◈ Inspection Log</span>
+      <span id="logCount" style="font-family:var(--mono);font-size:10px">0 entries</span>
+    </div>
+    <div class="card-body">
+      <div class="history-list" id="historyList">
+        <div class="history-empty" id="emptyMsg">// Awaiting first detection...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom bar -->
+  <div class="bottom-bar">
+    <div class="poll-indicator">
+      <div class="poll-dot"></div>
+      <span>AUTO-POLLING: 1.5s interval → <span id="apiUrl">http://localhost:5000/latest</span></span>
+    </div>
+    <div style="display:flex;gap:16px;align-items:center">
+      <span id="pingTime" style="color:var(--accent)">— ms</span>
+      <button class="btn-reset" onclick="resetSystem()">⟳ RESET</button>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  // ── Config ──────────────────────────────────────────────────────
+  const SERVER = 'http://localhost:5000';   // ← Change if Flask runs elsewhere
+  const POLL_MS = 1500;
+
+  // Zone detection types
+  const ZONE_INFO = {
+    1: { icon: '🟢', name: 'Color Detection',  desc: 'HSV Green threshold analysis' },
+    2: { icon: '⭕', name: 'Shape Detection',  desc: 'Hough Circle Transform' },
+    3: { icon: '🔵', name: 'Object Detection', desc: 'Blue square contour analysis' },
+  };
+
+  // ── State ────────────────────────────────────────────────────────
+  let prevZone   = 0;
+  let prevStatus = '';
+  let stats = { total: 0, pass: 0, fail: 0 };
+
+  // ── Clock ────────────────────────────────────────────────────────
+  function updateClock() {
+    document.getElementById('clock').textContent =
+      new Date().toLocaleTimeString('en-US', { hour12: false });
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  // ── Robot position helper ────────────────────────────────────────
+  function moveRobot(zone) {
+    const robot = document.getElementById('robotIndicator');
+    const container = document.getElementById('trackContainer');
+    const nodes = container.querySelectorAll('.zone-node');
+    if (zone < 1 || zone > 3) { robot.style.left = '40px'; return; }
+    const node = nodes[zone - 1];
+    const containerRect = container.getBoundingClientRect();
+    const nodeRect       = node.getBoundingClientRect();
+    const left = nodeRect.left - containerRect.left + nodeRect.width / 2 - 14;
+    robot.style.left = left + 'px';
+  }
+
+  // ── Update zone track ────────────────────────────────────────────
+  function updateTrack(data) {
+    const zone   = data.zone || 0;
+    const status = data.status || 'WAITING';
+
+    for (let z = 1; z <= 3; z++) {
+      const node  = document.getElementById('zoneNode' + z);
+      const badge = document.getElementById('zoneBadge' + z);
+      node.className = 'zone-node';
+      badge.textContent = 'PENDING';
+
+      if (z === zone) {
+        if (status === 'PASS' || status === 'FAIL') {
+          node.classList.add(status.toLowerCase());
+          badge.textContent = status;
+        } else {
+          node.classList.add('active');
+          badge.textContent = 'SCANNING';
+        }
+      } else if (z < zone) {
+        // Already visited — pull from history
+        const hist = data.history || [];
+        const entry = hist.find(h => h.zone === z);
+        if (entry) {
+          node.classList.add(entry.status.toLowerCase());
+          badge.textContent = entry.status;
+        }
+      }
+    }
+
+    if (zone > 0) moveRobot(zone);
+  }
+
+  // ── Update detection panel ───────────────────────────────────────
+  function updateDetectionPanel(data) {
+    const zone   = data.zone   || 0;
+    const status = data.status || 'WAITING';
+    const conf   = data.confidence || 0;
+
+    document.getElementById('curZone').textContent   = zone > 0 ? zone : '—';
+    document.getElementById('curStatus').textContent = status;
+    document.getElementById('curStatus').className   = 'result-status ' + status;
+
+    const confPct = Math.round(conf * 100);
+    document.getElementById('confVal').textContent   = confPct + '%';
+    document.getElementById('confBar').style.width   = confPct + '%';
+    document.getElementById('confBar').style.background =
+      status === 'PASS' ? 'var(--pass)' : status === 'FAIL' ? 'var(--fail)' : 'var(--accent)';
+
+    // Detection type
+    if (zone > 0 && ZONE_INFO[zone]) {
+      const info = ZONE_INFO[zone];
+      document.getElementById('detIcon').textContent = info.icon;
+      document.getElementById('detName').textContent = info.name;
+      document.getElementById('detDesc').textContent = info.desc;
+    }
+
+    // Timestamp
+    if (data.timestamp) {
+      const d = new Date(data.timestamp * 1000);
+      document.getElementById('lastUpdated').textContent =
+        d.toLocaleTimeString('en-US', { hour12: false });
+    }
+
+    document.getElementById('missionLabel').textContent =
+      zone === 0 ? 'STANDBY' :
+      zone > 3   ? 'COMPLETE' : 'ZONE ' + zone + ' / 3';
+  }
+
+  // ── Update history log ───────────────────────────────────────────
+  function updateHistory(history) {
+    if (!history || history.length === 0) return;
+
+    const list = document.getElementById('historyList');
+    const empty = document.getElementById('emptyMsg');
+
+    // Recalc stats
+    stats = { total: history.length, pass: 0, fail: 0 };
+    history.forEach(h => {
+      if (h.status === 'PASS') stats.pass++;
+      if (h.status === 'FAIL') stats.fail++;
+    });
+    document.getElementById('statTotal').textContent = stats.total;
+    document.getElementById('statPass').textContent  = stats.pass;
+    document.getElementById('statFail').textContent  = stats.fail;
+    document.getElementById('logCount').textContent  = stats.total + ' entries';
+
+    if (stats.total > 0 && empty) empty.remove();
+
+    // Rebuild list (reverse = newest first)
+    list.innerHTML = '';
+    [...history].reverse().forEach(h => {
+      const entry = document.createElement('div');
+      entry.className = 'history-entry ' + h.status;
+      const zInfo = ZONE_INFO[h.zone] || { icon: '?', name: 'Unknown' };
+      entry.innerHTML = `
+        <div class="he-zone">${h.zone}</div>
+        <div class="he-info">
+          <div class="he-status ${h.status}">${h.status}</div>
+          <div class="he-time">${zInfo.icon} ${zInfo.name} · ${h.time || '--'}</div>
+        </div>
+        <div class="he-conf">${Math.round((h.confidence || 0) * 100)}%</div>
+      `;
+      list.appendChild(entry);
+    });
+  }
+
+  // ── Poll server ──────────────────────────────────────────────────
+  async function poll() {
+    const t0 = Date.now();
+    try {
+      const res  = await fetch(SERVER + '/latest', { cache: 'no-store' });
+      const data = await res.json();
+      const ping = Date.now() - t0;
+
+      document.getElementById('pingTime').textContent = ping + ' ms';
+      document.getElementById('serverDot').className  = 'dot online';
+      document.getElementById('serverLabel').textContent = 'ONLINE';
+      document.getElementById('apiUrl').textContent   = SERVER + '/latest';
+
+      updateTrack(data);
+      updateDetectionPanel(data);
+      updateHistory(data.history || []);
+
+    } catch (err) {
+      document.getElementById('serverDot').className  = 'dot offline';
+      document.getElementById('serverLabel').textContent = 'OFFLINE';
+      console.warn('Poll failed:', err.message);
+    }
+  }
+
+  // ── Reset ────────────────────────────────────────────────────────
+  async function resetSystem() {
+    try {
+      await fetch(SERVER + '/reset', { method: 'POST' });
+      // Reset local state
+      for (let z = 1; z <= 3; z++) {
+        document.getElementById('zoneNode' + z).className = 'zone-node';
+        document.getElementById('zoneBadge' + z).textContent = 'PENDING';
+      }
+      document.getElementById('curZone').textContent   = '—';
+      document.getElementById('curStatus').textContent = 'WAITING';
+      document.getElementById('curStatus').className   = 'result-status';
+      document.getElementById('confVal').textContent   = '—';
+      document.getElementById('confBar').style.width   = '0%';
+      document.getElementById('historyList').innerHTML =
+        '<div class="history-empty" id="emptyMsg">// Awaiting first detection...</div>';
+      document.getElementById('statTotal').textContent = '0';
+      document.getElementById('statPass').textContent  = '0';
+      document.getElementById('statFail').textContent  = '0';
+      document.getElementById('logCount').textContent  = '0 entries';
+      document.getElementById('missionLabel').textContent = 'STANDBY';
+      document.getElementById('robotIndicator').style.left = '40px';
+    } catch (e) {
+      alert('Reset failed: ' + e.message);
+    }
+  }
+
+  // ── Start polling ────────────────────────────────────────────────
+  poll();
+  setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>
