@@ -19,6 +19,7 @@ import json
 import time
 import threading
 import requests
+import os
 from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 
@@ -27,7 +28,7 @@ CORS(app)  # Allow dashboard to fetch from different origin
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 IP_WEBCAM_URL  = "http://100.127.233.93:8080/video" 
-DASHBOARD_PORT = 5000
+DASHBOARD_PORT = int(os.environ.get("PORT", 5000))
 FRAME_WIDTH    = 640
 FRAME_HEIGHT   = 480
 
