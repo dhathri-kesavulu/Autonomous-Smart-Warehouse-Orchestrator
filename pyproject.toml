@@ -1,2 +1,13 @@
+[project]
+name = "warehouse-robot"
+version = "0.1.0"
+dependencies = [
+    "flask==3.0.0",
+    "flask-cors==4.0.0",
+    "opencv-python-headless==4.9.0.80",
+    "numpy==1.26.4",
+    "requests==2.31.0"
+]
+
 [tool.vercel]
 entrypoint = "vision_server:app"
